@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Any
 
 import streamlit as st
 
@@ -109,35 +109,63 @@ with st.spinner("Menjalankan algoritma..."):
     res_dij = run_algo("dijkstra")
 
 
-def animate_segments(col, label: str, res: Dict):
-    col.subheader(label)
-    if not res["ok"]:
-        img = draw_grid_image(grid, start, targets)
-        if img is not None:
-            col.image(img, use_container_width=True)
-        render_stats(label, res)
+def concurrent_animate(col_label_pairs: List[Tuple[Any, str, Dict]]):
+    # Render headers
+    placeholders = []
+    visited_map: Dict[str, set[Tuple[int, int]]] = {}
+    paths_map: Dict[str, List[Point]] = {}
+
+    for col, label, res in col_label_pairs:
+        col.subheader(label)
+        placeholders.append((label, col.empty()))
+        # flatten segments into a single list of Points
+        if res.get("ok") and res.get("segments"):
+            flat: List[Point] = []
+            for seg in res["segments"]:
+                flat.extend(seg)
+            paths_map[label] = flat
+            visited_map[label] = set([(start.x, start.y)])
+        else:
+            paths_map[label] = []
+            visited_map[label] = set()
+
+    if not animate:
+        # Just render static grids and stats
+        for (label, ph), (_, _, res) in zip(placeholders, col_label_pairs):
+            img = draw_grid_image(grid, start, targets)
+            if img is not None:
+                ph.image(img, use_container_width=True)
+            render_stats(label, res)
         return
-    if animate and res["segments"]:
-        visited: set[Tuple[int, int]] = set([(start.x, start.y)])
-        placeholder = col.empty()
-        for seg in res["segments"]:
-            for p in seg:
+
+    # Determine the maximum steps among all algorithms
+    max_steps = max((len(p) for p in paths_map.values()), default=0)
+    # Perform lockstep animation
+    for step_idx in range(max_steps):
+        for (label, ph) in placeholders:
+            res = next((r for (_c, _l, r) in col_label_pairs if _l == label), None)
+            if res is None:
+                continue
+            path = paths_map.get(label, [])
+            if step_idx < len(path):
+                p = path[step_idx]
+                visited = visited_map[label]
                 visited.add((p.x, p.y))
                 img = draw_grid_image(grid, start, targets, [p], visited)
                 if img is not None:
-                    placeholder.image(img, use_container_width=True)
-                time.sleep(max(0.001, speed_ms / 1000.0))
-        render_stats(label, res)
-    else:
-        img = draw_grid_image(grid, start, targets)
-        if img is not None:
-            col.image(img, use_container_width=True)
+                    ph.image(img, use_container_width=True)
+        time.sleep(max(0.001, speed_ms / 1000.0))
+
+    # After loop, render final stats below each
+    for (label, _ph), (_, _, res) in zip(placeholders, col_label_pairs):
         render_stats(label, res)
 
 
-animate_segments(colA, "A*", res_astar)
-animate_segments(colB, "BFS", res_bfs)
-animate_segments(colC, "Dijkstra", res_dij)
+concurrent_animate([
+    (colA, "A*", res_astar),
+    (colB, "BFS", res_bfs),
+    (colC, "Dijkstra", res_dij),
+])
 
 # Highlight pemenang
 ok_res = [r for r in [res_astar, res_bfs, res_dij] if r["ok"]]
