@@ -75,11 +75,13 @@ with st.sidebar:
     rows = st.slider("Jumlah Baris", 10, 40, 20)
     cols = st.slider("Jumlah Kolom", 10, 40, 20)
     wall_prob = st.slider("Kerapatan Dinding", 0.05, 0.6, 0.25, 0.01)
-    level = st.slider("Level (jumlah target)", 1, 8, 3)
+    level = st.slider("Level (jumlah target)", 1, 60, 3)
     animate = st.checkbox("Animasi jalur", value=True)
     speed_ms = st.slider("Kecepatan animasi (ms)", 5, 150, 30, 5)
 
 st.caption("Tip: Atur level untuk menambah jumlah target.")
+if level >= 30:
+    st.info("Level tinggi (>=30) dapat memerlukan waktu lebih lama untuk membangkitkan layout dan menjalankan simulasi.")
 
 # Buat layout yang bisa diselesaikan ketiga algoritma
 grid, start, targets = find_common_solvable_layout(rows, cols, wall_prob, level, ["astar", "bfs", "dijkstra"])
@@ -134,7 +136,7 @@ def concurrent_animate(col_label_pairs: List[Tuple[Any, str, Dict]]):
         for (label, ph), (_, _, res) in zip(placeholders, col_label_pairs):
             img = draw_grid_image(grid, start, targets)
             if img is not None:
-                ph.image(img, use_container_width=True)
+                ph.image(img, use_column_width=True)
             render_stats(label, res)
         return
 
@@ -153,7 +155,7 @@ def concurrent_animate(col_label_pairs: List[Tuple[Any, str, Dict]]):
                 visited.add((p.x, p.y))
                 img = draw_grid_image(grid, start, targets, [p], visited)
                 if img is not None:
-                    ph.image(img, use_container_width=True)
+                    ph.image(img, use_column_width=True)
         time.sleep(max(0.001, speed_ms / 1000.0))
 
     # After loop, render final stats below each
