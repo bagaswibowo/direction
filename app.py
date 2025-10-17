@@ -420,4 +420,7 @@ def api_save():
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    # Jangan jalankan server Flask jika file ini diimport/dijalankan oleh Streamlit
+    import sys
+    if "streamlit" not in sys.modules:
+        app.run(host="127.0.0.1", port=5000, debug=True)

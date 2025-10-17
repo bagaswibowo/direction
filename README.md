@@ -22,6 +22,21 @@ pip install -r requirements.txt
 python app.py
 ```
 
+### Mode Streamlit (UI 3 simulasi berdampingan)
+
+```bash
+# 1) aktifkan venv (lihat di atas), lalu install dependensi
+pip install -r requirements.txt
+
+# 2) jalankan streamlit
+streamlit run streamlit_app.py
+```
+
+Jika berjalan di Streamlit Community Cloud:
+- Pastikan file `streamlit_app.py` ada di root repo.
+- Pastikan `requirements.txt` berisi `streamlit` dan `Pillow`.
+- Saat membuat app baru, pilih file utama: `streamlit_app.py`.
+
 ## Kontrol di UI
 
 - Generate Labirin: regenerasi level sekarang dengan labirin baru.
@@ -41,3 +56,4 @@ python app.py
 
 - Server berjalan untuk pengembangan (debug). Jangan gunakan langsung untuk produksi.
 - Ukuran grid default 20x20; ubah di `State` pada `app.py` bila perlu.
+ - Untuk Streamlit, `app.py` tidak akan menyalakan server Flask secara otomatis (agar tidak konflik dengan runtime Streamlit).
