@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulasi Pathfinding: A*, BFS, Dijkstra</title>
+  <style>
+    body { display: flex; flex-direction: column; align-items: center; font-family: Arial, sans-serif; background: #fafafa; margin: 0; padding: 20px; }
+    h1 { margin: 8px 0 12px; }
+    canvas { border: 2px solid #444; background: #fff; }
+    button { margin: 5px; padding: 10px 16px; font-size: 15px; border-radius: 8px; cursor: pointer; border: none; color: white; background: #1976d2; }
+    button:hover { background: #0d47a1; }
+    label { margin: 0 8px; }
+    #controls { display: flex; align-items: center; flex-wrap: wrap; justify-content: center; }
+    #status { margin-top: 8px; font-weight: bold; }
+    #compareResults { margin-top: 8px; font-family: monospace; }
+    .compare-panel { display: none; flex-direction: row; gap: 12px; margin-top: 10px; }
+    .compare-col { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    .compare-col canvas { width: 300px; height: 300px; border: 3px solid #444; }
+    .winner { border-color: #2e7d32 !important; box-shadow: 0 0 0 3px rgba(46,125,50,0.25); }
+  </style>
+</head>
+<body>
+  <h1>Simulasi Pathfinding</h1>
+  <div id="controls">
+    <button id="generate">Generate Labirin</button>
+    <button id="simulate">Mulai Simulasi</button>
+    <button id="pause">Pause</button>
+    <button id="compare">Bandingkan</button>
+    <label>Kecepatan: <input id="speed" type="range" min="5" max="200" value="30" /></label>
+    <button id="save">Simpan Hasil</button>
+  </div>
+  <div id="status"></div>
+  <div id="comparePanel" class="compare-panel">
+    <div class="compare-col">
+      <canvas id="mazeAstar" width="300" height="300"></canvas>
+      <div>A*</div>
+      <div id="statsAstar" style="font-family: monospace; text-align:center;"></div>
+    </div>
+    <div class="compare-col">
+      <canvas id="mazeBfs" width="300" height="300"></canvas>
+      <div>BFS</div>
+      <div id="statsBfs" style="font-family: monospace; text-align:center;"></div>
+    </div>
+    <div class="compare-col">
+      <canvas id="mazeDijkstra" width="300" height="300"></canvas>
+      <div>Dijkstra</div>
+      <div id="statsDijkstra" style="font-family: monospace; text-align:center;"></div>
+    </div>
+  </div>
+  <script>
+    // Canvas refs (3 simulasi)
+    const canvasA = document.getElementById('mazeAstar');
+    const ctxA = canvasA.getContext('2d');
+    const canvasB = document.getElementById('mazeBfs');
+    const ctxB = canvasB.getContext('2d');
+    const canvasD = document.getElementById('mazeDijkstra');
+    const ctxD = canvasD.getContext('2d');
+    
+    // State
+    let currentPayload = null;
+    let running = false;
+    let paused = false;
+    let speedMs = 30;
+
+    // Helpers
+    function cellSizeFor(ctx, payload){ const c = ctx.canvas; return { w: c.width / payload.cols, h: c.height / payload.rows }; }
+    function pointKey(p){ return `${p.x},${p.y}`; }
+
+    function getCanvasForAlg(alg){
+      if (alg === 'astar') return canvasA;
+      if (alg === 'bfs') return canvasB;
+      if (alg === 'dijkstra') return canvasD;
+      return null;
+    }
+    function clearHighlights(){
+      [canvasA, canvasB, canvasD].forEach(c => c.classList.remove('winner'));
+    }
+    function highlightWinner(alg){
+      clearHighlights();
+      const c = getCanvasForAlg(alg);
+      if (c) c.classList.add('winner');
+    }
+
+    // Drawing
+    function drawOn(ctx, payload, highlightPath = [], visitedPoints = new Set()){
+      const { rows, cols, grid, start, targets } = payload;
+      const { w, h } = cellSizeFor(ctx, payload);
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          ctx.fillStyle = grid[y][x] ? '#222' : '#eee';
+          ctx.fillRect(x*w, y*h, w, h);
+          ctx.strokeRect(x*w, y*h, w, h);
+        }
+      }
+      ctx.fillStyle = '#90caf9';
+      visitedPoints.forEach(key => { const [x, y] = key.split(',').map(Number); ctx.fillRect(x*w, y*h, w, h); });
+      ctx.fillStyle = 'yellow';
+      highlightPath.forEach(p => ctx.fillRect(p.x*w, p.y*h, w, h));
+      ctx.fillStyle = 'green';
+      ctx.fillRect(start.x*w, start.y*h, w, h);
+      ctx.fillStyle = 'red';
+      targets.forEach(t => ctx.fillRect(t.x*w, t.y*h, w, h));
+    }
+    function updateStatus(payload){
+      const status = document.getElementById('status');
+      status.textContent = `Level: ${payload.level} | Jumlah Target: ${payload.targets.length}`;
+    }
+
+    function renderStats(alg, result){
+      const id = alg === 'astar' ? 'statsAstar' : (alg === 'bfs' ? 'statsBfs' : 'statsDijkstra');
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (!result || !result.ok){
+        el.textContent = 'Tidak ditemukan jalur.';
+        return;
+      }
+      const ms = typeof result.durationMs === 'number' ? result.durationMs.toFixed(3) : String(result.durationMs);
+      const expanded = result.expanded ?? '-';
+      const total = result.totalLength ?? '-';
+      const ok = result.ok ? 'Ya' : 'Tidak';
+      el.textContent = `Waktu: ${ms} ms • Node dikembangkan: ${expanded} • Panjang jalur: ${total} • Berhasil: ${ok}`;
+    }
+
+    // API
+    async function api(path){ const res = await fetch(path, { method: 'POST' }); if (!res.ok) throw new Error('Gagal memanggil API'); return res.json(); }
+
+    async function regenerate(){
+      const payload = await api('/api/regenerate');
+      currentPayload = payload;
+      updateStatus(payload);
+    }
+
+    function pointKey(p){ return `${p.x},${p.y}`; }
+
+    async function animateSegmentsOn(ctx, payload){
+      const segments = payload.segments || [];
+      let cur = { ...payload.start };
+      const visited = new Set([pointKey(cur)]);
+      for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
+        for (let step = 0; step < seg.length; step++) {
+          while (paused) { await new Promise(r => setTimeout(r, 50)); }
+          const p = seg[step];
+          visited.add(pointKey(p));
+          drawOn(ctx, payload, [p], visited);
+          await new Promise(r => setTimeout(r, speedMs));
+          cur = p;
+        }
+      }
+    }
+
+    async function animateSegments(payload){
+      // Tidak digunakan untuk kanvas utama; simpan untuk kompatibilitas
+      await animateSegmentsOn(ctxA, payload);
+    }
+
+    async function startAuto(){
+      if (running) return; running = true; paused = false;
+      try {
+  let payload = await api('/api/start');
+  currentPayload = payload; updateStatus(payload);
+        while (running){
+          if (!payload.solvable){ payload = await api('/api/regenerate'); currentPayload = payload; updateStatus(payload); }
+          // Always compare all three in parallel
+          const res = await fetch('/api/compare', { method: 'POST' });
+          if (res.ok){
+            const data = await res.json();
+            document.getElementById('comparePanel').style.display = 'flex';
+            const base = { rows: data.rows, cols: data.cols, grid: data.grid, start: data.start, targets: data.targets, level: currentPayload?.level ?? 1 };
+            const astar = data.results.find(r => r.algorithm === 'astar');
+            const bfs   = data.results.find(r => r.algorithm === 'bfs');
+            const dj    = data.results.find(r => r.algorithm === 'dijkstra');
+            if (astar) drawOn(ctxA, { ...base, segments: astar.segments });
+            if (bfs)   drawOn(ctxB, { ...base, segments: bfs.segments });
+            if (dj)    drawOn(ctxD, { ...base, segments: dj.segments });
+            await Promise.all([
+              astar?.ok ? animateSegmentsOn(ctxA, { ...base, segments: astar.segments }) : Promise.resolve(),
+              bfs?.ok   ? animateSegmentsOn(ctxB, { ...base, segments: bfs.segments })   : Promise.resolve(),
+              dj?.ok    ? animateSegmentsOn(ctxD, { ...base, segments: dj.segments })    : Promise.resolve(),
+            ]);
+            const rA = data.results.find(r => r.algorithm === 'astar');
+            const rB = data.results.find(r => r.algorithm === 'bfs');
+            const rD = data.results.find(r => r.algorithm === 'dijkstra');
+            renderStats('astar', rA);
+            renderStats('bfs', rB);
+            renderStats('dijkstra', rD);
+            // highlight pemenang
+            const okResults = data.results.filter(r => r.ok);
+            if (okResults.length){
+              let best = okResults[0];
+              for (const r of okResults) if (r.durationMs < best.durationMs) best = r;
+              highlightWinner(best.algorithm);
+            } else { clearHighlights(); }
+          }
+          try { await fetch('/api/save', { method: 'POST' }); } catch {}
+          payload = await api('/api/next'); currentPayload = payload; updateStatus(payload);
+        }
+      } catch (e){ console.error(e); running = false; }
+    }
+
+    document.getElementById('generate').addEventListener('click', regenerate);
+    document.getElementById('simulate').addEventListener('click', startAuto);
+    document.getElementById('pause').addEventListener('click', () => { paused = !paused; document.getElementById('pause').textContent = paused ? 'Resume' : 'Pause'; });
+    document.getElementById('speed').addEventListener('input', (e) => { speedMs = Number(e.target.value); });
+    document.getElementById('save').addEventListener('click', async () => { try { const res = await fetch('/api/save', { method: 'POST' }); if (!res.ok) throw new Error('Gagal'); const j = await res.json(); alert(j.ok ? 'Tersimpan ke runs.jsonl' : ('Gagal: ' + j.error)); } catch { alert('Gagal menyimpan'); } });
+
+    document.getElementById('compare').addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/compare', { method: 'POST' }); if (!res.ok) throw new Error('compare failed');
+        const data = await res.json();
+        document.getElementById('comparePanel').style.display = 'flex';
+        const base = { rows: data.rows, cols: data.cols, grid: data.grid, start: data.start, targets: data.targets, level: (currentPayload?.level ?? 1) };
+        const astar = data.results.find(r => r.algorithm === 'astar');
+        const bfs   = data.results.find(r => r.algorithm === 'bfs');
+        const dj    = data.results.find(r => r.algorithm === 'dijkstra');
+        if (astar) drawOn(ctxA, { ...base, segments: astar.segments });
+        if (bfs)   drawOn(ctxB, { ...base, segments: bfs.segments });
+        if (dj)    drawOn(ctxD, { ...base, segments: dj.segments });
+        await Promise.all([
+          astar?.ok ? animateSegmentsOn(ctxA, { ...base, segments: astar.segments }) : Promise.resolve(),
+          bfs?.ok   ? animateSegmentsOn(ctxB, { ...base, segments: bfs.segments })   : Promise.resolve(),
+          dj?.ok    ? animateSegmentsOn(ctxD, { ...base, segments: dj.segments })    : Promise.resolve(),
+        ]);
+        renderStats('astar', astar);
+        renderStats('bfs', bfs);
+        renderStats('dijkstra', dj);
+        // highlight pemenang (manual compare)
+        const okResults = data.results.filter(r => r.ok);
+        if (okResults.length){
+          let best = okResults[0];
+          for (const r of okResults) if (r.durationMs < best.durationMs) best = r;
+          highlightWinner(best.algorithm);
+        } else { clearHighlights(); }
+      } catch { alert('Gagal membandingkan'); }
+    });
+
+    // Boot: initial draw and auto-start
+    (async () => { try { await regenerate(); startAuto(); } catch { console.warn('Backend belum jalan. Jalankan server Python.'); } })();
+  </script>
+</body>
+</html>
