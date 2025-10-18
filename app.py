@@ -19,8 +19,10 @@ Grid = List[List[int]]
 
 
 def heuristic(a: Point, b: Point) -> int:
-    # Manhattan distance
-    return abs(a.x - b.x) + abs(a.y - b.y)
+    # Manhattan distance (4-arah)
+    dx = abs(a.x - b.x)
+    dy = abs(a.y - b.y)
+    return dx + dy
 
 
 def neighbors(node: Point, rows: int, cols: int, grid: Grid) -> List[Point]:
@@ -272,7 +274,7 @@ class State:
         self.segments: List[List[Point]] = []
         self.algorithm: str = "astar"
         self.segment_lengths: List[int] = []
-        self.total_length: int = 0
+        self.total_length = 0
 
     def to_payload(self) -> Dict:
         return {
@@ -307,6 +309,7 @@ def api_compare():
     # Compare A*, BFS, Dijkstra on the same layout and targets
     n_targets = state.level
     wall_prob = state.wall_prob
+    body = (request.json or {}) if request.is_json else {}
     algorithms = ["astar", "bfs", "dijkstra"]
     grid, start_pt, targets = find_common_solvable_layout(state.rows, state.cols, wall_prob, n_targets, algorithms)
     results = []
@@ -342,7 +345,15 @@ def api_start():
     # Reset to level 1, build solvable maze with 1 target
     state.level = 1
     state.wall_prob = 0.25
-    algo = (request.json or {}).get("algorithm") if request.is_json else None
+    body = (request.json or {}) if request.is_json else {}
+    algo = body.get("algorithm")
+    # optional rows/cols override
+    rows = body.get("rows")
+    cols = body.get("cols")
+    if isinstance(rows, int) and 5 <= rows <= 100:
+        state.rows = rows
+    if isinstance(cols, int) and 5 <= cols <= 100:
+        state.cols = cols
     if algo:
         algo = str(algo).lower()
     if algo not in {None, "astar", "bfs", "dijkstra"}:
@@ -365,7 +376,15 @@ def api_next():
     # Increase difficulty: more walls and more targets
     state.level += 1
     state.wall_prob = min(0.5, state.wall_prob + 0.03)
-    algo = (request.json or {}).get("algorithm") if request.is_json else None
+    body = (request.json or {}) if request.is_json else {}
+    algo = body.get("algorithm")
+    # optional rows/cols override
+    rows = body.get("rows")
+    cols = body.get("cols")
+    if isinstance(rows, int) and 5 <= rows <= 100:
+        state.rows = rows
+    if isinstance(cols, int) and 5 <= cols <= 100:
+        state.cols = cols
     if algo:
         algo = str(algo).lower()
     if algo not in {None, "astar", "bfs", "dijkstra"}:
@@ -387,7 +406,15 @@ def api_next():
 @app.post("/api/regenerate")
 def api_regenerate():
     # Regenerate current level with current difficulty
-    algo = (request.json or {}).get("algorithm") if request.is_json else None
+    body = (request.json or {}) if request.is_json else {}
+    algo = body.get("algorithm")
+    # optional rows/cols override
+    rows = body.get("rows")
+    cols = body.get("cols")
+    if isinstance(rows, int) and 5 <= rows <= 100:
+        state.rows = rows
+    if isinstance(cols, int) and 5 <= cols <= 100:
+        state.cols = cols
     if algo:
         algo = str(algo).lower()
     if algo not in {None, "astar", "bfs", "dijkstra"}:

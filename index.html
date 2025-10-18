@@ -14,9 +14,9 @@
     #controls { display: flex; align-items: center; flex-wrap: wrap; justify-content: center; }
     #status { margin-top: 8px; font-weight: bold; }
     #compareResults { margin-top: 8px; font-family: monospace; }
-    .compare-panel { display: none; flex-direction: row; gap: 12px; margin-top: 10px; }
-    .compare-col { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-    .compare-col canvas { width: 300px; height: 300px; border: 3px solid #444; }
+  .compare-panel { display: none; flex-direction: row; gap: 12px; margin-top: 10px; width: 100%; align-items: stretch; }
+  .compare-col { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+  .compare-col canvas { width: 100%; height: auto; border: 3px solid #444; box-sizing: border-box; }
     .winner { border-color: #2e7d32 !important; box-shadow: 0 0 0 3px rgba(46,125,50,0.25); }
   </style>
 </head>
@@ -26,36 +26,49 @@
     <button id="generate">Generate Labirin</button>
     <button id="simulate">Mulai Simulasi</button>
     <button id="pause">Pause</button>
-    <button id="compare">Bandingkan</button>
+    
+  <label>Baris: <input id="rows" type="number" min="5" max="100" value="100" style="width:70px" /></label>
+  <label>Kolom: <input id="cols" type="number" min="5" max="100" value="100" style="width:70px" /></label>
+    
+    <span>
+      Preset:
+      <button id="presetSmall" style="padding:4px 8px; background:#455a64">Kecil</button>
+      <button id="presetMedium" style="padding:4px 8px; background:#546e7a">Sedang</button>
+      <button id="presetLarge" style="padding:4px 8px; background:#607d8b">Besar</button>
+    </span>
     <label>Kecepatan: <input id="speed" type="range" min="5" max="200" value="30" /></label>
     <button id="save">Simpan Hasil</button>
+    <button id="fullscreen" style="background:#2e7d32">Layar Penuh</button>
   </div>
   <div id="status"></div>
   <div id="comparePanel" class="compare-panel">
     <div class="compare-col">
-      <canvas id="mazeAstar" width="300" height="300"></canvas>
+  <canvas id="mazeAstar" width="300" height="300"></canvas>
       <div>A*</div>
       <div id="statsAstar" style="font-family: monospace; text-align:center;"></div>
     </div>
     <div class="compare-col">
-      <canvas id="mazeBfs" width="300" height="300"></canvas>
+  <canvas id="mazeBfs" width="300" height="300"></canvas>
       <div>BFS</div>
       <div id="statsBfs" style="font-family: monospace; text-align:center;"></div>
     </div>
     <div class="compare-col">
-      <canvas id="mazeDijkstra" width="300" height="300"></canvas>
+  <canvas id="mazeDijkstra" width="300" height="300"></canvas>
       <div>Dijkstra</div>
       <div id="statsDijkstra" style="font-family: monospace; text-align:center;"></div>
     </div>
   </div>
   <script>
-    // Canvas refs (3 simulasi)
+  // Canvas refs (3 simulasi)
     const canvasA = document.getElementById('mazeAstar');
     const ctxA = canvasA.getContext('2d');
     const canvasB = document.getElementById('mazeBfs');
     const ctxB = canvasB.getContext('2d');
     const canvasD = document.getElementById('mazeDijkstra');
     const ctxD = canvasD.getContext('2d');
+  const comparePanel = document.getElementById('comparePanel');
+  const headerEl = document.querySelector('h1');
+  const controlsEl = document.getElementById('controls');
     
     // State
     let currentPayload = null;
@@ -104,7 +117,32 @@
     }
     function updateStatus(payload){
       const status = document.getElementById('status');
-      status.textContent = `Level: ${payload.level} | Jumlah Target: ${payload.targets.length}`;
+      status.textContent = `Level: ${payload.level} | Jumlah Target: ${payload.targets.length} | Ukuran: ${payload.rows}x${payload.cols}`;
+    }
+
+    function resizeCanvases(){
+      // Set panel height to fit viewport minus controls/header
+      const headerH = headerEl?.offsetHeight || 0;
+      const controlsH = controlsEl?.offsetHeight || 0;
+      const margin = 30;
+      const panelH = Math.max(240, window.innerHeight - headerH - controlsH - margin);
+      comparePanel.style.height = panelH + 'px';
+      // For each column, set canvas square size based on available width/height
+      document.querySelectorAll('.compare-col').forEach(col => {
+        const canvas = col.querySelector('canvas');
+        if (!canvas) return;
+        // Reserve some height for labels and stats
+        const children = Array.from(col.children);
+        let reservedH = 0;
+        children.forEach(el => { if (el !== canvas) reservedH += (el.offsetHeight || 0) + 6; });
+        const availW = col.clientWidth - 6;
+        const availH = panelH - reservedH - 6;
+        const size = Math.floor(Math.max(50, Math.min(availW, availH)));
+        if (size > 0) {
+          canvas.width = size;
+          canvas.height = size;
+        }
+      });
     }
 
     function renderStats(alg, result){
@@ -122,8 +160,22 @@
       el.textContent = `Waktu: ${ms} ms • Node dikembangkan: ${expanded} • Panjang jalur: ${total} • Berhasil: ${ok}`;
     }
 
+    // Helpers ukuran
+    function currentSize(){
+      const r = Number(document.getElementById('rows').value);
+      const c = Number(document.getElementById('cols').value);
+      const rows = isFinite(r) ? Math.max(5, Math.min(100, r)) : 20;
+      const cols = isFinite(c) ? Math.max(5, Math.min(100, c)) : 20;
+      return { rows, cols };
+    }
+
     // API
-    async function api(path){ const res = await fetch(path, { method: 'POST' }); if (!res.ok) throw new Error('Gagal memanggil API'); return res.json(); }
+    async function api(path){
+      const body = JSON.stringify(currentSize());
+      const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+      if (!res.ok) throw new Error('Gagal memanggil API');
+      return res.json();
+    }
 
     async function regenerate(){
       const payload = await api('/api/regenerate');
@@ -163,10 +215,11 @@
         while (running){
           if (!payload.solvable){ payload = await api('/api/regenerate'); currentPayload = payload; updateStatus(payload); }
           // Always compare all three in parallel
-          const res = await fetch('/api/compare', { method: 'POST' });
+          const res = await fetch('/api/compare', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(currentSize()) });
           if (res.ok){
             const data = await res.json();
-            document.getElementById('comparePanel').style.display = 'flex';
+            comparePanel.style.display = 'flex';
+            resizeCanvases();
             const base = { rows: data.rows, cols: data.cols, grid: data.grid, start: data.start, targets: data.targets, level: currentPayload?.level ?? 1 };
             const astar = data.results.find(r => r.algorithm === 'astar');
             const bfs   = data.results.find(r => r.algorithm === 'bfs');
@@ -204,39 +257,44 @@
     document.getElementById('pause').addEventListener('click', () => { paused = !paused; document.getElementById('pause').textContent = paused ? 'Resume' : 'Pause'; });
     document.getElementById('speed').addEventListener('input', (e) => { speedMs = Number(e.target.value); });
     document.getElementById('save').addEventListener('click', async () => { try { const res = await fetch('/api/save', { method: 'POST' }); if (!res.ok) throw new Error('Gagal'); const j = await res.json(); alert(j.ok ? 'Tersimpan ke runs.jsonl' : ('Gagal: ' + j.error)); } catch { alert('Gagal menyimpan'); } });
+  // Preset ukuran
+  function setSize(r, c){ document.getElementById('rows').value = String(r); document.getElementById('cols').value = String(c); }
+  document.getElementById('presetSmall').addEventListener('click', async () => { setSize(16, 16); await regenerate(); });
+  document.getElementById('presetMedium').addEventListener('click', async () => { setSize(20, 20); await regenerate(); });
+  document.getElementById('presetLarge').addEventListener('click', async () => { setSize(100, 100); await regenerate(); });
 
-    document.getElementById('compare').addEventListener('click', async () => {
-      try {
-        const res = await fetch('/api/compare', { method: 'POST' }); if (!res.ok) throw new Error('compare failed');
-        const data = await res.json();
-        document.getElementById('comparePanel').style.display = 'flex';
-        const base = { rows: data.rows, cols: data.cols, grid: data.grid, start: data.start, targets: data.targets, level: (currentPayload?.level ?? 1) };
-        const astar = data.results.find(r => r.algorithm === 'astar');
-        const bfs   = data.results.find(r => r.algorithm === 'bfs');
-        const dj    = data.results.find(r => r.algorithm === 'dijkstra');
-        if (astar) drawOn(ctxA, { ...base, segments: astar.segments });
-        if (bfs)   drawOn(ctxB, { ...base, segments: bfs.segments });
-        if (dj)    drawOn(ctxD, { ...base, segments: dj.segments });
-        await Promise.all([
-          astar?.ok ? animateSegmentsOn(ctxA, { ...base, segments: astar.segments }) : Promise.resolve(),
-          bfs?.ok   ? animateSegmentsOn(ctxB, { ...base, segments: bfs.segments })   : Promise.resolve(),
-          dj?.ok    ? animateSegmentsOn(ctxD, { ...base, segments: dj.segments })    : Promise.resolve(),
-        ]);
-        renderStats('astar', astar);
-        renderStats('bfs', bfs);
-        renderStats('dijkstra', dj);
-        // highlight pemenang (manual compare)
-        const okResults = data.results.filter(r => r.ok);
-        if (okResults.length){
-          let best = okResults[0];
-          for (const r of okResults) if (r.durationMs < best.durationMs) best = r;
-          highlightWinner(best.algorithm);
-        } else { clearHighlights(); }
-      } catch { alert('Gagal membandingkan'); }
-    });
+    
 
     // Boot: initial draw and auto-start
-    (async () => { try { await regenerate(); startAuto(); } catch { console.warn('Backend belum jalan. Jalankan server Python.'); } })();
+  (async () => { try { await regenerate(); startAuto(); } catch { console.warn('Backend belum jalan. Jalankan server Python.'); } })();
+  window.addEventListener('resize', () => { if (comparePanel.style.display === 'flex') resizeCanvases(); });
+
+    // Fullscreen toggle
+    let compact = false;
+    async function toggleFullscreen(){
+      compact = !compact;
+      if (compact){
+        headerEl.style.display = 'none';
+        controlsEl.style.display = 'none';
+        document.body.style.paddingTop = '8px';
+        // Try Fullscreen API if available
+        const elem = document.documentElement;
+        try{
+          if (elem.requestFullscreen) await elem.requestFullscreen();
+          else if (elem.webkitRequestFullscreen) await elem.webkitRequestFullscreen();
+        } catch {}
+      } else {
+        headerEl.style.display = '';
+        controlsEl.style.display = '';
+        document.body.style.paddingTop = '';
+        try{
+          if (document.exitFullscreen) await document.exitFullscreen();
+          else if (document.webkitExitFullscreen) await document.webkitExitFullscreen();
+        } catch {}
+      }
+      resizeCanvases();
+    }
+    document.getElementById('fullscreen').addEventListener('click', toggleFullscreen);
   </script>
 </body>
 </html>

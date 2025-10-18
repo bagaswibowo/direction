@@ -72,10 +72,10 @@ st.title("Simulasi Pathfinding — A*, BFS, Dijkstra")
 
 with st.sidebar:
     st.header("Pengaturan")
-    rows = st.slider("Jumlah Baris", 10, 40, 20)
-    cols = st.slider("Jumlah Kolom", 10, 40, 20)
-    wall_prob = st.slider("Kerapatan Dinding", 0.05, 0.6, 0.25, 0.01)
-    level = st.slider("Level (jumlah target)", 1, 60, 3)
+    rows = st.slider("Jumlah Baris", 10, 100, 100)
+    cols = st.slider("Jumlah Kolom", 10, 100, 100)
+    wall_prob = st.slider("Kerapatan Dinding", 0.05, 0.6, 0.35, 0.01)
+    level = st.slider("Level (jumlah target)", 1, 100, 60)
     animate = st.checkbox("Animasi jalur", value=True)
     speed_ms = st.slider("Kecepatan animasi (ms)", 5, 150, 30, 5)
 
